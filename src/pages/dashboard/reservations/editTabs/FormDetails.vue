@@ -1,0 +1,301 @@
+<script setup>
+import { ref, watch, defineProps, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
+import moment from 'moment'
+import FormSelect from "@/components/dashboard/shared/FormSelect.vue"
+import FormSelectTime from "@/components/dashboard/shared/FormSelectTime.vue"
+import CurrencyControl from "@/components/dashboard/form/CurrencyControl.vue"
+import InputControl from "@/components/dashboard/form/InputControl.vue"
+import FormInput from "@/components/dashboard/shared/FormInput.vue"
+import FormTextarea from "@/components/dashboard/shared/FormTextarea.vue"
+import times from "@/static/times.json"
+import CalenderControl from "@/components/dashboard/form/CalenderControl.vue"
+import { useI18n } from 'vue-i18n'
+import { useReservationStore } from '@/stores/reservation'
+import { api } from '@/use/useAxios'
+import { useValidationStore } from '@/stores/validation'
+// import Checkbox from '@/components/dashboard/form/CheckBox.vue'
+import { deCurrency } from '@/use/useUtil'
+
+const props = defineProps({
+  validation: {
+    type: Object,
+    default: () => { }
+  }
+})
+
+const validationStore = useValidationStore()
+const reserveStore = useReservationStore()
+const { t, locale } = useI18n({ useScope: 'global' })
+const localeTime = ref(times)
+
+const customers = ref([])
+const users = ref([])
+const vehicles = ref([])
+const pickupLocations = ref([])
+const returnLocations = ref([])
+const fuelLevels = ref([])
+const languges = ref([
+  {
+    id: "de",
+    label: t('language.german')
+  },
+  {
+    id: "en",
+    label: t('language.english')
+  }
+])
+
+const getCustomers = async (keyowrd = "") => {
+  try {
+    const res = await api.get(
+      `/admin/customer/selectsearch?name=${keyowrd}`
+    )
+    customers.value = res.data
+  } catch (err) {
+    console.error(err)
+  }
+}
+getCustomers()
+
+const searchingUsers = ref(false)
+const getUsers = async (keyowrd = "") => {
+  try {
+    searchingUsers.value = true
+    const data = await api.get(`/admin/users/search?name=${keyowrd}`)
+    users.value = data.data
+  } catch (err) {
+    console.error(err)
+  } finally {
+    searchingUsers.value = false
+  }
+}
+getUsers()
+
+const searchingVehicle = ref(false)
+const getVehicles = async (keyowrd = "") => {
+  try {
+    searchingVehicle.value = true
+    const res = await api.get(
+      `/admin/vehicle/search?name=${keyowrd}`
+    )
+    vehicles.value = res.data
+  } catch (err) {
+    console.error(err)
+  } finally {
+    searchingVehicle.value = false
+  }
+}
+getVehicles()
+
+const searchingPickupLocation = ref(false)
+const getPickupLocations = async (keyowrd = "") => {
+  try {
+    searchingPickupLocation.value = true
+    const res = await api.get(
+      `/admin/location/search/en?name=${keyowrd}`
+    )
+
+    pickupLocations.value = res.data
+  } catch (err) {
+    console.error(err)
+  } finally {
+    searchingPickupLocation.value = false
+  }
+}
+getPickupLocations()
+
+const searchingReturnLocation = ref(false)
+const getReturnLocations = async (keyowrd = "") => {
+  try {
+    searchingReturnLocation.value = true
+    const res = await api.get(
+      `/admin/location/search/en?name=${keyowrd}`
+    )
+
+    returnLocations.value = res.data
+  } catch (err) {
+    console.error(err)
+  } finally {
+    searchingReturnLocation.value = false
+  }
+}
+getReturnLocations()
+
+const getFuelLevels = async (keyowrd = "") => {
+  try {
+    const res = await api.get(
+      `/admin/fuel-lavel/search?name=${keyowrd}`
+    )
+    fuelLevels.value = res.data
+  } catch (err) {
+    console.error(err)
+  }
+}
+getFuelLevels()
+
+const parseTime = (s) => {
+  let parts = s.split(":")
+  let hh = parseInt(parts[0], 10)
+  let mm = parseInt(parts[1], 10)
+
+  return { hh, mm }
+}
+
+const onVehicleSelect = id => {
+  const vehicle = vehicles.value.find(v => v.id == id)
+  reserveStore.editInfo.day_rate = vehicle.day_rate
+  reserveStore.editInfo.week_rate = vehicle.week_rate
+  reserveStore.editInfo.month_rate = vehicle.month_rate
+
+  reserveStore.edit.per_hour_rate = vehicle[reserveStore.edit.rent_option]
+  reserveStore.editCurrency.per_hour_rate = deCurrency(vehicle[reserveStore.edit.rent_option])
+
+  reserveStore.edit.damages_art = vehicle.art
+  reserveStore.edit.damages_content = vehicle.additional_note
+  reserveStore.edit.vehicleclass_id = vehicle.class_id
+}
+
+const setTotalRentalPrice = () => {
+  const rd = reserveStore.edit.rent_days
+  const rentOption = reserveStore.edit.rent_option
+  const rate = reserveStore.editInfo[rentOption]
+  let price = null
+  if (rentOption === 'day_rate') {
+    const dayCeil = rd <= 0 ? 1 : Math.ceil(rd)
+    price = Number((rate * dayCeil).toFixed(2))
+  }
+  if (rentOption === 'week_rate') {
+    const weekCeil = Math.ceil(rd / 7)
+    price = Number((rate * weekCeil).toFixed(2))
+  }
+  if (rentOption === 'month_rate') {
+    const monthCeil = Math.ceil(rd / 30)
+    price = Number((rate * monthCeil).toFixed(2))
+  }
+
+  // Set data to Global store
+  reserveStore.edit.total_rental_price = price
+
+  // Set data to fake currency store
+  reserveStore.editCurrency.total_rental_price = deCurrency(price)
+}
+
+// Watch date and time
+const { edit } = storeToRefs(reserveStore)
+
+const convertkmIncluded = () => {
+  // console.log(e)
+  if (isNaN(reserveStore.edit.km_included) && /[0-9]{1,3}(?:.[0-9]{3})*(?:,[0-9]+)/.test(reserveStore.edit.km_included)) {
+    reserveStore.edit.km_included = (reserveStore.edit.km_included).replace('.', '').replace(',', '.')
+    if (locale.value == 'de') {
+      reserveStore.edit.km_included = Number(reserveStore.edit.km_included).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    }
+    else {
+      reserveStore.edit.km_included = Number(reserveStore.edit.km_included).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    }
+  }
+  else {
+    if (locale.value == 'de') {
+      const num = Number(reserveStore.edit.km_included).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      reserveStore.edit.km_included = num
+    }
+    else {
+      const num = Number(reserveStore.edit.km_included).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      reserveStore.edit.km_included = num
+    }
+  }
+}
+
+watch(() => [edit.value.start_date, edit.value.start_time, edit.value.end_date, edit.value.end_time, edit.value.vehicle_id], async ([sd, st, ed, et, vId]) => {
+  const checkCondition = sd && st && ed && et
+
+  // Calculate duration
+  if (checkCondition) {
+    const start = moment(new Date(sd).setHours(parseTime(st).hh, parseTime(st).mm))
+    const end = moment(new Date(ed).setHours(parseTime(et).hh, parseTime(et).mm))
+
+    reserveStore.edit.rental_hours = end.diff(start, 'hours')
+    reserveStore.edit.rent_days = end.diff(start, 'days') + 1
+  }
+
+  if (checkCondition && vId) {
+    // Check for Already booked or not
+    const payload = {
+      vehicle_id: reserveStore.edit.vehicle_id,
+      reservation_id: reserveStore.edit.id,
+      start_date: sd,
+      start_time: st,
+      end_date: ed,
+      end_time: et
+    }
+
+    delete validationStore.errors.start_date
+    delete validationStore.errors.start_time
+    delete validationStore.errors.end_date
+    delete validationStore.errors.end_time
+
+    try {
+      await api.post(`/admin/reservation/vichlewisedatacheckbyedit`, payload)
+
+      // Calculate Automatic Total Rental Price
+      if (reserveStore.edit.calculate_value === 'Automatic') {
+        setTotalRentalPrice()
+      }
+    } catch (error) {
+      console.error(error)
+    }
+  }
+})
+
+onMounted(() => {
+  if (reserveStore.edit.km_included != null) {
+    if (locale.value == 'de') {
+      const num = Number(reserveStore.edit.km_included).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      reserveStore.edit.km_included = num
+    }
+    else {
+      const num = Number(reserveStore.edit.km_included).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      reserveStore.edit.km_included = num
+    }
+  }
+
+})
+
+</script>
+
+<template>
+  <div class="detailsInfo-form">
+    <div class="row">
+      <div class="col-xl-5 col-lg-6">
+        <FormSelect v-model="reserveStore.edit.origin_of_customer" class="mb-3" :options="['Walk-in customers', 'Online', 'Phone', 'Recommendation']" :label="t('form-fields.origin-of-customer')" :placeholder="t('form-fields.select-origin-of-customer')" />
+        <FormSelect v-model="reserveStore.edit.create_by" class="mb-3" :options="users" displayProperty="name" valueProperty="id" search :searching="searchingUsers" :search-placeholder="t('form-fields.search-by-created-by')" no-border @search="getUsers" :label="t('form-fields.created-by')" :placeholder="t('form-fields.select-created-by')" errorField="create_by" :frontError="props.validation" />
+        <FormSelect v-model="reserveStore.edit.vehicle_id" @update:modelValue="onVehicleSelect" :options="vehicles" class="mb-3" displayProperty="vehicle_name" valueProperty="id" search :searching="searchingVehicle" :search-placeholder="t('form-fields.search-by-vehicle-name')" no-border @search="getVehicles" :label="t('form-fields.vehicle')" :placeholder="t('form-fields.select-vehicle')" errorField="vehicle_id" :frontError="props.validation" />
+
+        <FormSelect v-model="reserveStore.edit.pick_up_loaction" :options="pickupLocations" class="mb-3" displayProperty="location_name" valueProperty="id" search :searching="searchingPickupLocation" :search-placeholder="t('form-fields.search-location')" no-border @search="getPickupLocations" :label="t('home-search-form.pick-location')" :placeholder="t('form-fields.location')" errorField="pick_up_loaction" :frontError="props.validation" />
+        <FormSelect v-model="reserveStore.edit.return_location" :options="returnLocations" class="mb-4" displayProperty="location_name" valueProperty="id" search :searching="searchingReturnLocation" :search-placeholder="t('form-fields.search-location')" no-border @search="getReturnLocations" :label="t('form-fields.return-location')" :placeholder="t('form-fields.location')" errorField="return_location" :frontError="props.validation" />
+        <CalenderControl v-model="reserveStore.edit.start_date" :maxDate="reserveStore.edit.end_date" :label="t('form-fields.start-date')" :placeholder="t('form-fields.start-date')" class="my-3" labelClasses="label-muted" errorField="start_date" :errors="props.validation" />
+        <FormSelectTime v-model="reserveStore.edit.start_time" :options="localeTime[locale]" displayProperty="time" valueProperty="24_hour" :label="t('form-fields.start-time')" :placeholder="t('form-fields.start-time')" errorField="start_time" :frontError="props.validation" />
+        <CalenderControl v-model="reserveStore.edit.end_date" :minDate="reserveStore.edit.start_date" :label="t('form-fields.end-date')" :placeholder="t('form-fields.end-date')" class="my-3" labelClasses="label-muted" errorField="end_date" :errors="props.validation" />
+        <FormSelectTime v-model="reserveStore.edit.end_time" :options="localeTime[locale]" displayProperty="time" valueProperty="24_hour" :label="t('form-fields.end-time')" :placeholder="t('form-fields.end-time')" errorField="end_time" :frontError="props.validation" />
+
+      </div>
+
+      <div class="col-xl-6 col-lg-6 offset-xl-1">
+        <FormSelect v-model="reserveStore.edit.fuel_level_at_pick_up_id" :options="fuelLevels" class="mb-3" displayProperty="label_name" valueProperty="id" :placeholder="t('form-fields.fuel-level-at-pickup')" :label="t('form-fields.fuel-level-at-pickup')" errorField="fuel_level_at_pick_up_id" :frontError="props.validation" />
+        <InputControl v-model="reserveStore.edit.km_included" @blur="convertkmIncluded(modelValue)" :placeholder="t('form-fields.km-included')" :label="t('form-fields.km-included')" errorField="km_included" :errors="props.validation" appendIcon="km" class="mb-3" />
+        <CurrencyControl v-model.number="reserveStore.edit.cost_per_extra_km" v-model:currency="reserveStore.editCurrency.cost_per_extra_km" :placeholder="t('form-fields.cost-per-extra-km')" :label="t('form-fields.cost-per-extra-km')" errorField="cost_per_extra_km" :errors="props.validation" class="mb-3" />
+
+        <FormInput v-model="reserveStore.edit.km_at_pick_up" type="number" :placeholder="t('form-fields.km-at-pickup')" :label="t('form-fields.km-at-pickup')" errorField="km_at_pick_up" :frontError="props.validation" />
+        <FormSelect v-model="reserveStore.edit.contact_language" :options="languges" class="mb-3" :placeholder="t('language.select-language')" displayProperty="label" valueProperty="id" :label="t('form-fields.contract-language')" errorField="contact_language" :frontError="props.validation" />
+        <FormTextarea v-model="reserveStore.edit.note" :placeholder="t('form-fields.type-a-note-here')" :label="t('form-fields.note')" errorField="note" />
+
+        <!-- <Checkbox v-model="reserveStore.edit.non_smoking_agreement" :label="t('form-fields.non-smoking-agreement')" class="mt-3" /> -->
+
+      </div>
+    </div>
+  </div>
+</template>
+
+
+  <style lang="scss" scoped></style>

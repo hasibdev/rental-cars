@@ -1,0 +1,34 @@
+.borderd-content {
+  border: 1px solid #ddd;
+  padding: 1rem;
+  border-radius: 5px;
+}
+
+.pointer {
+  cursor: pointer;
+}
+
+.text-transparent {
+  color: transparent;
+}
+
+.noresize {
+  resize: none;
+}
+
+.label-muted {
+  color: #666;
+}
+
+.relative {
+  position: relative;
+}
+
+// Aspect Ration
+.aspect-ratio-9-6 {
+  aspect-ratio: 9/6;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
